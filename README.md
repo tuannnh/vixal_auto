@@ -121,12 +121,16 @@ Finished job (`/api/jobs/{id}`):
 
 ```json
 { "id": "ab12…", "status": "done", "kind": "image", "count": 1,
-  "folder": "photos", "copytele_urls": ["http://…/source/vixal/photos/photo.jpg"],
-  "copytele_url": "http://…/source/vixal/photos/photo.jpg" }
+  "folder": "photos", "copytele_urls": ["http://…/source/vixal/photos/photo_20260629_143012.jpg"],
+  "copytele_url": "http://…/source/vixal/photos/photo_20260629_143012.jpg" }
 ```
 
 On failure: `"status":"error"` with an `"error"` message. While running,
 `"progress"` carries a live step (e.g. *"uploading image 2/3"*, *"processing…"*).
+
+Saved files are named by save time: `photo_<YYYYmmdd_HHMMSS>` (in `photos/`) and
+`clip_<YYYYmmdd_HHMMSS>` (in `videos/`). A batch shares one timestamp with a
+`_N` suffix per image (`photo_20260629_143012_2.jpg`).
 
 ## 📱 iPhone Shortcut (share a photo/video → process → save)
 

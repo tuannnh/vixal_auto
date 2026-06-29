@@ -17,7 +17,6 @@ class JobSpec:
 
     kind: str                       # "image" | "video"
     inputs: list[str]               # local paths to the uploaded file(s)
-    stem: str = "vixal"             # base name for output files on copytele
     prompt: str = "Nude"            # image→image prompt option
     # video→video toggle settings (each is matched against a menu button):
     template: str = "1"             # 1..5

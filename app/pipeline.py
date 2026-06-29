@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import datetime
 from typing import Callable
 
-from app.config import settings
 from app.uploader import upload_to_copytele
 from app.vixal_client import client
 
@@ -14,12 +14,15 @@ StatusCb = Callable[[str], None]
 IMAGE, VIDEO = "image", "video"
 
 
-def _result_name(stem: str, ext: str, idx: int, total: int) -> str:
-    """A stable, readable filename for an output file on copytele."""
+def _result_name(kind: str, ext: str, idx: int, total: int, ts: str) -> str:
+    """Timestamped output name, e.g. photo_20260629_143012 / clip_20260629_143012.
+
+    For a batch (total > 1) the files share the job timestamp and get a _N suffix.
+    """
     ext = ext if ext.startswith(".") else f".{ext}"
-    if total > 1:
-        return f"{stem}_{idx + 1}{ext}"
-    return f"{stem}{ext}"
+    prefix = "clip" if kind == VIDEO else "photo"
+    suffix = f"_{idx + 1}" if total > 1 else ""
+    return f"{prefix}_{ts}{suffix}{ext}"
 
 
 async def process(spec, status: StatusCb | None = None) -> dict:
@@ -42,9 +45,10 @@ async def process(spec, status: StatusCb | None = None) -> dict:
 
         urls: list[str] = []
         total = len(outputs)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")  # one stamp per job
         for i, path in enumerate(outputs):
             ext = os.path.splitext(path)[1] or (".mp4" if spec.kind == VIDEO else ".jpg")
-            name = _result_name(spec.stem, ext, i, total)
+            name = _result_name(spec.kind, ext, i, total, ts)
             say(f"uploading result {i + 1}/{total} to copytele")
             url = await asyncio.to_thread(upload_to_copytele, path, name, subfolder)
             urls.append(url)

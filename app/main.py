@@ -43,12 +43,6 @@ app = FastAPI(title="vixal_auto → copytele", lifespan=lifespan)
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 
 
-def _safe_stem(name: str) -> str:
-    stem = os.path.splitext(os.path.basename(name or "vixal"))[0]
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-")
-    return stem or "vixal"
-
-
 def _kind_for(filename: str, content_type: str = "") -> str | None:
     ext = os.path.splitext(filename or "")[1].lower()
     if ext in VIDEO_EXTS or (content_type or "").startswith("video/"):
@@ -107,7 +101,6 @@ async def api_process(
     spec = JobSpec(
         kind="video" if kind == "video" else "image",
         inputs=paths,
-        stem=_safe_stem(files[0].filename),
         prompt=prompt,
         template=template, breast=breast, duration=duration,
         ratio=ratio, resolution=resolution,
@@ -141,7 +134,7 @@ async def api_save(
         )
     paths = await _save_uploads([file])
     spec = JobSpec(
-        kind=kind, inputs=paths, stem=_safe_stem(file.filename), prompt=prompt,
+        kind=kind, inputs=paths, prompt=prompt,
         template=template, breast=breast, duration=duration,
         ratio=ratio, resolution=resolution,
     )
