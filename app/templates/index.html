@@ -233,12 +233,47 @@
       }
     });
 
+    // Parse a response as JSON, but turn a non-JSON body (usually an HTML error
+    // page from a reverse proxy) into a readable error instead of a cryptic
+    // "Unexpected token '<'" SyntaxError.
+    async function readJson(r) {
+      const text = await r.text();
+      try { return JSON.parse(text); }
+      catch {
+        let hint = '';
+        if (r.status === 413) hint = ' — file too large for the server/proxy (raise the upload size limit)';
+        else if (r.status === 502 || r.status === 504) hint = ' — proxy timeout/error';
+        const snippet = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+        throw new Error(`HTTP ${r.status} ${r.statusText}${hint}` + (snippet ? ` [${snippet}]` : ''));
+      }
+    }
+
+    // Downscale a large image in the browser so it doesn't blow past upload-size
+    // limits on the wire (the server also resizes, but only after receiving it).
+    async function shrinkForUpload(file, maxDim = 2560, maxBytes = 8_000_000) {
+      if (!file.type.startsWith('image/')) return file;
+      let bmp;
+      try { bmp = await createImageBitmap(file); }
+      catch { return file; } // can't decode (e.g. some HEIC) -> let the server handle it
+      const { width: W, height: H } = bmp;
+      const scale = Math.min(1, maxDim / Math.max(W, H));
+      if (scale === 1 && file.size <= maxBytes) { bmp.close?.(); return file; }
+      const w = Math.max(1, Math.round(W * scale)), h = Math.max(1, Math.round(H * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+      bmp.close?.();
+      const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+      if (!blob) return file;
+      const name = (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg';
+      return new File([blob], name, { type: 'image/jpeg' });
+    }
+
     async function poll(jobId) {
       while (true) {
         await sleep(2000);
         const r = await fetch('/api/jobs/' + jobId);
-        if (!r.ok) throw new Error('job lookup failed');
-        const d = await r.json();
+        const d = await readJson(r);
         if (d.status === 'done') {
           out.className = 'ok';
           const links = (d.copytele_urls || []).map(u => `<a href="${u}">${u}</a>`).join('\n');
@@ -258,25 +293,28 @@
 
     document.getElementById('f').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const fd = new FormData();
-      fd.append('kind', mode);
-      if (mode === 'image') {
-        if (!imageFiles.length) { flash('❌ Add at least one image (file, drop, or paste)', 'err'); return; }
-        for (const f of imageFiles) fd.append('files', f);
-        fd.append('prompt', document.getElementById('prompt').value.trim() || 'Nude');
-      } else {
-        if (!videoFile) { flash('❌ Pick a video', 'err'); return; }
-        fd.append('files', videoFile);
-        fd.append('template', document.getElementById('template').value);
-        fd.append('breast', document.getElementById('breast').value);
-        fd.append('duration', document.getElementById('duration').value);
-        fd.append('ratio', document.getElementById('ratio').value);
-        fd.append('resolution', document.getElementById('resolution').value);
-      }
-      go.disabled = true; flash('🕒 Queued…');
+      if (mode === 'image' && !imageFiles.length) { flash('❌ Add at least one image (file, drop, or paste)', 'err'); return; }
+      if (mode === 'video' && !videoFile) { flash('❌ Pick a video', 'err'); return; }
+
+      go.disabled = true;
       try {
+        const fd = new FormData();
+        fd.append('kind', mode);
+        if (mode === 'image') {
+          flash('🗜️ Preparing images…');
+          for (const f of imageFiles) fd.append('files', await shrinkForUpload(f));
+          fd.append('prompt', document.getElementById('prompt').value.trim() || 'Nude');
+        } else {
+          fd.append('files', videoFile);
+          fd.append('template', document.getElementById('template').value);
+          fd.append('breast', document.getElementById('breast').value);
+          fd.append('duration', document.getElementById('duration').value);
+          fd.append('ratio', document.getElementById('ratio').value);
+          fd.append('resolution', document.getElementById('resolution').value);
+        }
+        flash('🕒 Queued…');
         const r = await fetch('/api/process', { method: 'POST', body: fd });
-        const d = await r.json();
+        const d = await readJson(r);
         if (d.id) await poll(d.id);
         else flash('❌ ' + (d.error || 'Failed to queue'), 'err');
       } catch (err) {
