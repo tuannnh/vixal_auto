@@ -37,6 +37,19 @@
     .ok { color:#6bd58f; } .err { color:#f08a8a; }
     a { color:#7fb0ff; word-break:break-all; }
     .hide { display:none; }
+    /* paste / drop zone + thumbnail previews */
+    .dropzone { margin-top:.5rem; padding:1.1rem; border:1px dashed #2a2e37; border-radius:10px;
+      text-align:center; color:#9aa0a6; font-size:.85rem; background:#14171d; cursor:pointer;
+      outline:none; transition:border-color .15s, background .15s, color .15s; }
+    .dropzone:focus, .dropzone.drag { border-color:#4c8bf5; color:#cfe0ff; background:#172033; }
+    .previews { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.6rem; }
+    .thumb { position:relative; width:84px; height:84px; border-radius:8px; overflow:hidden;
+      border:1px solid #2a2e37; background:#0b0d11; }
+    .thumb img, .thumb video { width:100%; height:100%; object-fit:cover; display:block; }
+    .thumb .rm { position:absolute; top:2px; right:2px; width:20px; height:20px; line-height:18px;
+      text-align:center; border-radius:50%; border:0; background:rgba(0,0,0,.65); color:#fff;
+      cursor:pointer; font-size:.75rem; padding:0; }
+    .count { font-size:.8rem; color:#9aa0a6; margin-top:.45rem; min-height:1rem; }
   </style>
 </head>
 <body>
@@ -63,8 +76,12 @@
         <option value="Missionary"></option><option value="Blowjob"></option>
         <option value="Facial"></option>
       </datalist>
-      <label>Image file(s) — pick more than one for Batch (max 10)</label>
+
+      <label>Images — choose files, drag &amp; drop, or paste (⌘/Ctrl-V). More than one = Batch, max 10.</label>
       <input id="imgFiles" type="file" accept="image/*" multiple />
+      <div id="dropzone" class="dropzone" tabindex="0">📋 Click here then paste, or drop images</div>
+      <div id="thumbs" class="previews"></div>
+      <div id="imgCount" class="count"></div>
     </div>
 
     <div id="videoOpts" class="hide">
@@ -93,6 +110,7 @@
       </div>
       <label>MP4 video file</label>
       <input id="vidFile" type="file" accept="video/*" />
+      <div id="vidPreview" class="previews"></div>
     </div>
 
     <button class="go" id="go" type="submit">Process &amp; Save</button>
@@ -101,11 +119,23 @@
   <div id="out">Ready.</div>
 
   <script>
+    const MAX = 10;
     let mode = 'image';
+    let imageFiles = [];   // single source of truth: file-picker + paste + drop
+    let videoFile = null;
+
     const out = document.getElementById('out');
     const go = document.getElementById('go');
+    const imgInput = document.getElementById('imgFiles');
+    const vidInput = document.getElementById('vidFile');
+    const thumbs = document.getElementById('thumbs');
+    const imgCount = document.getElementById('imgCount');
+    const vidPreview = document.getElementById('vidPreview');
+    const dropzone = document.getElementById('dropzone');
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const flash = (msg, cls = '') => { out.className = cls; out.textContent = msg; };
 
+    // ---- tab switching ----
     document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
       document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
@@ -113,6 +143,95 @@
       document.getElementById('imageOpts').classList.toggle('hide', mode !== 'image');
       document.getElementById('videoOpts').classList.toggle('hide', mode !== 'video');
     }));
+
+    // ---- image list: add / remove / render ----
+    function addImages(fileList) {
+      let added = 0, full = false;
+      for (const f of fileList) {
+        if (!f || !f.type.startsWith('image/')) continue;
+        if (imageFiles.length >= MAX) { full = true; break; }
+        // Clipboard images usually arrive nameless or as "image.png"; give them
+        // a unique, extension-correct name so copytele filenames don't collide.
+        const generic = !f.name || f.name === 'image.png';
+        const file = generic
+          ? new File([f], `pasted_${Date.now()}_${imageFiles.length}.${(f.type.split('/')[1] || 'png')}`, { type: f.type })
+          : f;
+        imageFiles.push(file);
+        added++;
+      }
+      renderImages();
+      if (full) flash(`⚠️ Max ${MAX} images — extras ignored`, 'err');
+      return added;
+    }
+    function removeImage(i) { imageFiles.splice(i, 1); renderImages(); }
+    function renderImages() {
+      thumbs.innerHTML = '';
+      imageFiles.forEach((f, i) => {
+        const url = URL.createObjectURL(f);
+        const el = document.createElement('div');
+        el.className = 'thumb';
+        el.innerHTML = '<img alt="" /><button type="button" class="rm" title="Remove">✕</button>';
+        const img = el.querySelector('img');
+        img.src = url;
+        img.onload = () => URL.revokeObjectURL(url);
+        el.querySelector('.rm').onclick = () => removeImage(i);
+        thumbs.appendChild(el);
+      });
+      const n = imageFiles.length;
+      imgCount.textContent = n ? `${n} image${n > 1 ? 's' : ''} ready · ${n > 1 ? 'Batch' : 'Single'} mode` : '';
+    }
+    imgInput.addEventListener('change', () => { addImages(imgInput.files); imgInput.value = ''; });
+
+    // ---- paste images anywhere (image mode only) ----
+    document.addEventListener('paste', (e) => {
+      if (mode !== 'image') return;
+      const imgs = [];
+      for (const it of (e.clipboardData?.items || [])) {
+        if (it.kind === 'file' && it.type.startsWith('image/')) {
+          const f = it.getAsFile();
+          if (f) imgs.push(f);
+        }
+      }
+      if (imgs.length) {
+        e.preventDefault();
+        const n = addImages(imgs);
+        if (n) flash(`📋 Pasted ${n} image${n > 1 ? 's' : ''}`);
+      }
+    });
+
+    // ---- drag & drop (whole window, image mode) ----
+    ['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, (e) => {
+      if (mode !== 'image') return;
+      e.preventDefault();
+      dropzone.classList.add('drag');
+    }));
+    document.addEventListener('dragleave', (e) => {
+      if (!e.relatedTarget) dropzone.classList.remove('drag');
+    });
+    document.addEventListener('drop', (e) => {
+      if (mode !== 'image') return;
+      e.preventDefault();
+      dropzone.classList.remove('drag');
+      if (e.dataTransfer?.files?.length) {
+        const n = addImages(e.dataTransfer.files);
+        if (n) flash(`📥 Added ${n} image${n > 1 ? 's' : ''}`);
+      }
+    });
+    dropzone.addEventListener('click', () => dropzone.focus());
+
+    // ---- video preview ----
+    vidInput.addEventListener('change', () => {
+      videoFile = vidInput.files[0] || null;
+      vidPreview.innerHTML = '';
+      if (videoFile) {
+        const url = URL.createObjectURL(videoFile);
+        const el = document.createElement('div');
+        el.className = 'thumb';
+        el.innerHTML = '<video muted playsinline></video>';
+        el.querySelector('video').src = url;
+        vidPreview.appendChild(el);
+      }
+    });
 
     async function poll(jobId) {
       while (true) {
@@ -142,28 +261,26 @@
       const fd = new FormData();
       fd.append('kind', mode);
       if (mode === 'image') {
-        const files = document.getElementById('imgFiles').files;
-        if (!files.length) { out.className='err'; out.textContent='❌ Pick at least one image'; return; }
-        for (const f of files) fd.append('files', f);
+        if (!imageFiles.length) { flash('❌ Add at least one image (file, drop, or paste)', 'err'); return; }
+        for (const f of imageFiles) fd.append('files', f);
         fd.append('prompt', document.getElementById('prompt').value.trim() || 'Nude');
       } else {
-        const f = document.getElementById('vidFile').files[0];
-        if (!f) { out.className='err'; out.textContent='❌ Pick a video'; return; }
-        fd.append('files', f);
+        if (!videoFile) { flash('❌ Pick a video', 'err'); return; }
+        fd.append('files', videoFile);
         fd.append('template', document.getElementById('template').value);
         fd.append('breast', document.getElementById('breast').value);
         fd.append('duration', document.getElementById('duration').value);
         fd.append('ratio', document.getElementById('ratio').value);
         fd.append('resolution', document.getElementById('resolution').value);
       }
-      go.disabled = true; out.className = ''; out.textContent = '🕒 Queued…';
+      go.disabled = true; flash('🕒 Queued…');
       try {
         const r = await fetch('/api/process', { method: 'POST', body: fd });
         const d = await r.json();
         if (d.id) await poll(d.id);
-        else { out.className='err'; out.textContent = '❌ ' + (d.error || 'Failed to queue'); }
+        else flash('❌ ' + (d.error || 'Failed to queue'), 'err');
       } catch (err) {
-        out.className='err'; out.textContent = '❌ ' + err;
+        flash('❌ ' + err, 'err');
       } finally {
         go.disabled = false;
       }
