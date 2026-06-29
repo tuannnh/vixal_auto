@@ -14,6 +14,10 @@ dependencies = [
     # Lets Telethon auto-detect video metadata so uploads are sent as proper
     # streamable videos — the bot ignores an mp4 sent as a plain document.
     "hachoir>=3.3",
+    # Downscale/re-encode oversized images so Telegram accepts them as photos
+    # (10 MB / dimension limits). pillow-heif adds iPhone HEIC/HEIF support.
+    "pillow>=10.0",
+    "pillow-heif>=0.16",
     "httpx>=0.27",
     "jinja2>=3.1",
     "python-multipart>=0.0.9",

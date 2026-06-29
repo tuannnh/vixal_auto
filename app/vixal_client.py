@@ -26,19 +26,74 @@ import asyncio
 import logging
 import os
 import re
+import uuid
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Iterable
 
+from PIL import Image
 from telethon import TelegramClient, events
 from telethon.tl.custom import Message
 
 from app.config import settings
+
+# Let Pillow open iPhone HEIC/HEIF photos (best-effort; harmless if unavailable).
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+except Exception:  # noqa: BLE001
+    pass
 
 log = logging.getLogger("vixal_auto.bot")
 
 StatusCb = Callable[[str], None]
 
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".bmp", ".gif"}
+
+# Telegram photo limits: ≤ 10 MB and width+height ≤ 10000. We cap the longest
+# side well under that and re-encode to JPEG so big phone photos are accepted.
+PHOTO_MAX_DIM = 2560
+PHOTO_MAX_BYTES = 9_500_000
+
+
+def _prepare_photo(path: str) -> str:
+    """Return a path Telegram will accept as a photo.
+
+    If the image is already small enough (JPEG/PNG, within the size/dimension
+    limits) the original path is returned unchanged. Otherwise it's downscaled
+    and re-encoded to a JPEG in download_dir; that temp path is returned (and
+    the caller deletes it after sending). Best-effort: on any error the original
+    path is returned so the send can still be attempted.
+    """
+    try:
+        size = os.path.getsize(path)
+        with Image.open(path) as im:
+            w, h = im.size
+            fmt = (im.format or "").upper()
+            ok = (size <= PHOTO_MAX_BYTES and (w + h) <= 10000
+                  and max(w, h) <= PHOTO_MAX_DIM and fmt in ("JPEG", "PNG"))
+            if ok:
+                return path
+            im = im.convert("RGB")
+            scale = min(1.0, PHOTO_MAX_DIM / max(w, h))
+            if scale < 1.0:
+                im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))),
+                               Image.LANCZOS)
+            os.makedirs(settings.download_dir, exist_ok=True)
+            out = os.path.join(settings.download_dir, f"_tg_{uuid.uuid4().hex}.jpg")
+            quality = 90
+            im.save(out, "JPEG", quality=quality)
+            while os.path.getsize(out) > PHOTO_MAX_BYTES and quality > 50:
+                quality -= 10
+                im.save(out, "JPEG", quality=quality)
+            log.info("[prep] %s (%dx%d, %d bytes) -> %s (q=%d, %d bytes)",
+                     os.path.basename(path), w, h, size, os.path.basename(out),
+                     quality, os.path.getsize(out))
+            return out
+    except Exception as exc:  # noqa: BLE001
+        log.warning("photo prep failed for %s (%s); sending original", path, exc)
+        return path
 
 # --------------------------------------------------------------------------- #
 # Button / state patterns. Tune these to match your bot's exact wording.       #
@@ -166,12 +221,26 @@ class BotFlow:
     async def send_media(self, path: str, *, as_document: bool = False) -> None:
         log.info("[send] file %s (document=%s)", os.path.basename(path), as_document)
         kwargs: dict = {}
-        is_video = os.path.splitext(path)[1].lower() in VIDEO_EXTS
+        ext = os.path.splitext(path)[1].lower()
+        is_video = ext in VIDEO_EXTS
+        send_path, tmp = path, None
         if is_video and not as_document:
             # Send as a streamable video (with hachoir-detected attributes), else
             # the bot treats it as a document and silently ignores it.
             kwargs["supports_streaming"] = True
-        await self.client.send_file(self.bot, path, force_document=as_document, **kwargs)
+        elif ext in IMAGE_EXTS and not as_document:
+            # Downscale/re-encode if Telegram would reject it as a photo (>10 MB
+            # or too large). _prepare_photo returns the original when it's fine.
+            send_path = await asyncio.to_thread(_prepare_photo, path)
+            tmp = send_path if send_path != path else None
+        try:
+            await self.client.send_file(self.bot, send_path, force_document=as_document, **kwargs)
+        finally:
+            if tmp:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
 
     async def _drain_next(self, timeout: float) -> Message:
         return await asyncio.wait_for(self._cap.queue.get(), timeout=timeout)
