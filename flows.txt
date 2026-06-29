@@ -1,0 +1,11 @@
+# Image to Image Processing
+Chat with bot: /start -> image to image V2 -> Single (one image) / Batch (multiple images, max 10)
+
+-> Single -> Bot: Single Image Mode\n Please send your image -> upload one image -> Bot: Select Prompt Option -> Select "Nude" -> Bot: Added to Queue!\n Images: 1\nPriority: VIP\nCost: 2 Gems -> Bot: Started processing you 1 image(s)... -> <Processed Image Upload> -> Save
+
+-> Batch -> Bot: Batch Image Mode\n Please send all your images (max 10) -> upload multiple images, for each uploaded image, bot reply: Image added. Total: 1 (2,3,4,5...10), with the button to choose: No More Image, Select Prompt -> Bot: Select Prompt Option -> Select "Nude" -> Bot: Added to Queue!\n Images: X\nPriority: VIP\nCost: X Gems -> Bot: Started processing your X image(s)... -> <Processed Images Upload> -> Save All
+
+# Video to Video Processing
+Chat with bot: /start -> video to video V2 -> Bot: Video to Video Mode\n Please send and MP4 video to start. -> send video -> Bot: Video to Video Settings\nConfigure your output details bellows: -> Choose options: 1, medium, 10s, confirm Upload -> Bot: Added to Queue!\n Priority: VIP\n Cost: 5 Gems -> Bot: Started processing your video... -> <Processed Video Upload> -> Save
+
+

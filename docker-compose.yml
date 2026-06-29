@@ -1,0 +1,29 @@
+services:
+  vixal-auto:
+    # Local build. On the server, pull the CI-published image instead by
+    # commenting out `build: .` and uncommenting `image:` (then `docker compose
+    # pull && docker compose up -d`).
+    build: .
+    # image: ghcr.io/<owner>/vixal_auto:latest
+    container_name: vixal-auto
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    # Real values live in .env (gitignored). Compose substitutes them here.
+    environment:
+      TELEGRAM_API_ID: "${TELEGRAM_API_ID}"
+      TELEGRAM_API_HASH: "${TELEGRAM_API_HASH}"
+      TELEGRAM_PHONE: "${TELEGRAM_PHONE}"
+      TELEGRAM_VIXAL_AI_BOT_USERNAME: "${TELEGRAM_VIXAL_AI_BOT_USERNAME:-vixal_i_clone_bot}"
+      TELEGRAM_SESSION: "/session/vixal_auto.session"
+      # Use copytele's DIRECT LAN origin, NOT the public Cloudflare URL
+      # (Cloudflare 524-times-out / caps large media uploads).
+      COPYTELE_UPLOAD_URL: "${COPYTELE_UPLOAD_URL:-http://copytele:3923/source/vixal/}"
+      COPYTELE_PW: "${COPYTELE_PW:-}"
+      OVERWRITE: "${OVERWRITE:-false}"
+    volumes:
+      # The authorized Telethon session, created on the host by:
+      #   python -m scripts.login    (produces ./vixal_auto.session)
+      # Mounted in so the container reuses it headlessly.
+      - ./vixal_auto.session:/session/vixal_auto.session
+    # Point nginx-proxy-manager at this container on port 8090.

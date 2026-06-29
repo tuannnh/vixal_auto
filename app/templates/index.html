@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>vixal → copytele</title>
+  <style>
+    :root { color-scheme: dark light; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 640px; margin: 0 auto; padding: 2rem 1rem;
+      background: #0f1115; color: #e8e8ea;
+    }
+    h1 { font-size: 1.4rem; }
+    .sub { color: #9aa0a6; font-size: .85rem; margin-top: -.4rem; }
+    .banner { background:#3a2230; border:1px solid #6b2b3f; color:#f3b6c2;
+      padding:.7rem 1rem; border-radius:10px; font-size:.85rem; margin:1rem 0; }
+    label { display:block; font-size:.8rem; color:#9aa0a6; margin:.9rem 0 .3rem; }
+    input, select {
+      width:100%; padding:.7rem .9rem; border-radius:10px;
+      border:1px solid #2a2e37; background:#181b21; color:inherit; font-size:1rem;
+    }
+    .tabs { display:flex; gap:.5rem; margin:1.2rem 0 .5rem; }
+    .tab { flex:1; text-align:center; padding:.6rem; border-radius:10px; cursor:pointer;
+      background:#181b21; border:1px solid #2a2e37; font-weight:600; }
+    .tab.active { background:#4c8bf5; color:#fff; border-color:#4c8bf5; }
+    .row { display:flex; gap:.6rem; }
+    .row > div { flex:1; }
+    button.go {
+      width:100%; margin-top:1.2rem; padding:.85rem; border:0; border-radius:10px; cursor:pointer;
+      background:#4c8bf5; color:#fff; font-size:1rem; font-weight:600;
+    }
+    button.go:disabled { opacity:.5; cursor:progress; }
+    #out { white-space:pre-wrap; margin-top:1.2rem; padding:1rem; border-radius:10px;
+      background:#181b21; border:1px solid #2a2e37; min-height:1.5rem; font-size:.9rem; }
+    .ok { color:#6bd58f; } .err { color:#f08a8a; }
+    a { color:#7fb0ff; word-break:break-all; }
+    .hide { display:none; }
+  </style>
+</head>
+<body>
+  <h1>🪄 vixal → copytele</h1>
+  <p class="sub">Upload, let the bot process it, save the result to <code>{{ target }}</code></p>
+
+  {% if not ready %}
+  <div class="banner">⚠️ Telegram session not ready{% if error %}: {{ error }}{% endif %}.
+    Run <code>python -m scripts.login</code> once, then restart.</div>
+  {% endif %}
+
+  <div class="tabs">
+    <div class="tab active" data-mode="image">🖼️ Image → Image</div>
+    <div class="tab" data-mode="video">🎬 Video → Video</div>
+  </div>
+
+  <form id="f">
+    <div id="imageOpts">
+      <label>Prompt option (must match a bot button)</label>
+      <input id="prompt" type="text" value="Nude" list="prompts" />
+      <datalist id="prompts">
+        <option value="Nude"></option><option value="Bikini"></option>
+        <option value="Rope Bondage"></option><option value="Fishnet"></option>
+        <option value="Missionary"></option><option value="Blowjob"></option>
+        <option value="Facial"></option>
+      </datalist>
+      <label>Image file(s) — pick more than one for Batch (max 10)</label>
+      <input id="imgFiles" type="file" accept="image/*" multiple />
+    </div>
+
+    <div id="videoOpts" class="hide">
+      <div class="row">
+        <div><label>Template</label>
+          <select id="template"><option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+        </div>
+        <div><label>Breast size</label>
+          <select id="breast"><option selected>small</option><option>medium</option><option>large</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>Duration (Gems ↑)</label>
+          <select id="duration">
+            <option value="5s" selected>5s · 30💎</option><option value="10s">10s · 60💎</option>
+            <option value="15s">15s · 90💎</option><option value="20s">20s · 120💎</option>
+            <option value="25s">25s · 150💎</option><option value="30s">30s · 180💎</option>
+          </select>
+        </div>
+        <div><label>Ratio</label>
+          <select id="ratio"><option value="9:16" selected>9:16</option><option value="16:9">16:9</option></select>
+        </div>
+        <div><label>Resolution</label>
+          <select id="resolution"><option selected>480p</option><option>720p</option></select>
+        </div>
+      </div>
+      <label>MP4 video file</label>
+      <input id="vidFile" type="file" accept="video/*" />
+    </div>
+
+    <button class="go" id="go" type="submit">Process &amp; Save</button>
+  </form>
+
+  <div id="out">Ready.</div>
+
+  <script>
+    let mode = 'image';
+    const out = document.getElementById('out');
+    const go = document.getElementById('go');
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      mode = t.dataset.mode;
+      document.getElementById('imageOpts').classList.toggle('hide', mode !== 'image');
+      document.getElementById('videoOpts').classList.toggle('hide', mode !== 'video');
+    }));
+
+    async function poll(jobId) {
+      while (true) {
+        await sleep(2000);
+        const r = await fetch('/api/jobs/' + jobId);
+        if (!r.ok) throw new Error('job lookup failed');
+        const d = await r.json();
+        if (d.status === 'done') {
+          out.className = 'ok';
+          const links = (d.copytele_urls || []).map(u => `<a href="${u}">${u}</a>`).join('\n');
+          out.innerHTML = `✅ Saved ${d.count} file(s) to <b>${d.folder}/</b>\n` + links;
+          return;
+        }
+        if (d.status === 'error') {
+          out.className = 'err'; out.textContent = '❌ ' + (d.error || 'Failed');
+          return;
+        }
+        out.className = '';
+        out.textContent = (d.status === 'running'
+          ? '⏳ ' + (d.progress || 'Working…')
+          : '🕒 Queued…');
+      }
+    }
+
+    document.getElementById('f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData();
+      fd.append('kind', mode);
+      if (mode === 'image') {
+        const files = document.getElementById('imgFiles').files;
+        if (!files.length) { out.className='err'; out.textContent='❌ Pick at least one image'; return; }
+        for (const f of files) fd.append('files', f);
+        fd.append('prompt', document.getElementById('prompt').value.trim() || 'Nude');
+      } else {
+        const f = document.getElementById('vidFile').files[0];
+        if (!f) { out.className='err'; out.textContent='❌ Pick a video'; return; }
+        fd.append('files', f);
+        fd.append('template', document.getElementById('template').value);
+        fd.append('breast', document.getElementById('breast').value);
+        fd.append('duration', document.getElementById('duration').value);
+        fd.append('ratio', document.getElementById('ratio').value);
+        fd.append('resolution', document.getElementById('resolution').value);
+      }
+      go.disabled = true; out.className = ''; out.textContent = '🕒 Queued…';
+      try {
+        const r = await fetch('/api/process', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.id) await poll(d.id);
+        else { out.className='err'; out.textContent = '❌ ' + (d.error || 'Failed to queue'); }
+      } catch (err) {
+        out.className='err'; out.textContent = '❌ ' + err;
+      } finally {
+        go.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

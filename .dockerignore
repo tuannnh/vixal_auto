@@ -1,0 +1,20 @@
+# Keep the build context (and image) small + secret-free.
+.venv/
+.git/
+.github/
+.env
+.env.example
+# Telethon session = a live login to your account. Never bake it into an image;
+# it's mounted in at runtime (see docker-compose.yml).
+*.session
+*.session-journal
+.login_state.json
+data/
+__pycache__/
+*.pyc
+/tmp/
+*.md
+flows.txt
+.dockerignore
+.gitignore
+.ipynb_checkpoints/

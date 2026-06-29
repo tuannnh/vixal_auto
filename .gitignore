@@ -1,0 +1,10 @@
+.env
+.login_state.json
+*.session
+*.session-journal
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+/tmp/
+data/

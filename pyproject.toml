@@ -1,0 +1,24 @@
+[project]
+name = "vixal-auto"
+version = "0.1.0"
+description = "Automate the vixalAI-clone Telegram bot (image→image, video→video) from a webapp and push results to copytele."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    # Drives the bot as a *user* (MTProto), so we can click inline buttons and
+    # send/receive media exactly like the Telegram app does.
+    "telethon>=1.36",
+    # Faster MTProto crypto for Telethon (optional but big speedup on media).
+    "cryptg>=0.4",
+    # Lets Telethon auto-detect video metadata so uploads are sent as proper
+    # streamable videos — the bot ignores an mp4 sent as a plain document.
+    "hachoir>=3.3",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "pydantic-settings>=2.2",
+]
+
+[tool.uv]
+package = false
